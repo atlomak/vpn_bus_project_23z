@@ -1,99 +1,89 @@
-#
-# 'make'        build executable file 'main'
-# 'make clean'  removes all .o and executable files
-#
-
-# define the C compiler to use
+# Define the C compiler to use
 CC = gcc
 
-# define any compile-time flags
-CFLAGS	:= -Wall -Wextra -g
+# Define any compile-time flags
+CFLAGS := -Wall -Wextra -g
 
-# define library paths in addition to /usr/lib
-#   if I wanted to include libraries not in /usr/lib I'd specify
-#   their path using -Lpath, something like:
+# Define library paths in addition to /usr/lib
 LFLAGS =
 
-# define output directory
-OUTPUT	:= output
+# Define output directory
+OUTPUT := output
 
-# define source directory
-SRC		:= src
+# Define source directories
+CLIENT_SRC := src/client
+SERVER_SRC := src/server
+SHARED_SRC := src/shared
 
-# define include directory
-INCLUDE	:= include
+# Define include directory
+INCLUDE := include
 
-# define lib directory
-LIB		:= lib
+# Define lib directory
+LIB := lib
 
+# Executable names
+CLIENT := $(OUTPUT)/client
+SERVER := $(OUTPUT)/server
+
+# Platform-specific settings
 ifeq ($(OS),Windows_NT)
-MAIN	:= main.exe
-SOURCEDIRS	:= $(SRC)
-INCLUDEDIRS	:= $(INCLUDE)
-LIBDIRS		:= $(LIB)
-FIXPATH = $(subst /,\,$1)
-RM			:= del /q /f
-MD	:= mkdir
+    FIXPATH = $(subst /,\,$1)
+    RM := del /q /f
+    MD := mkdir
 else
-MAIN	:= main
-SOURCEDIRS	:= $(shell find $(SRC) -type d)
-INCLUDEDIRS	:= $(shell find $(INCLUDE) -type d)
-LIBDIRS		:= $(shell find $(LIB) -type d)
-FIXPATH = $1
-RM = rm -f
-MD	:= mkdir -p
+    FIXPATH = $1
+    RM = rm -f
+    MD := mkdir -p
 endif
 
-# define any directories containing header files other than /usr/include
-INCLUDES	:= $(patsubst %,-I%, $(INCLUDEDIRS:%/=%))
+# Directories containing header files other than /usr/include
+INCLUDES := $(patsubst %,-I%, $(INCLUDE:%/=%))
 
-# define the C libs
-LIBS		:= $(patsubst %,-L%, $(LIBDIRS:%/=%))
+# C library paths
+LIBS := $(patsubst %,-L%, $(LIB:%/=%))
 
-# define the C source files
-SOURCES		:= $(wildcard $(patsubst %,%/*.c, $(SOURCEDIRS)))
+# Define the C source files
+CLIENT_SOURCES := $(wildcard $(CLIENT_SRC)/*.c) $(wildcard $(SHARED_SRC)/*.c)
+SERVER_SOURCES := $(wildcard $(SERVER_SRC)/*.c) $(wildcard $(SHARED_SRC)/*.c)
 
-# define the C object files 
-OBJECTS		:= $(SOURCES:.c=.o)
+# Define the C object files 
+CLIENT_OBJECTS := $(CLIENT_SOURCES:.c=.o)
+SERVER_OBJECTS := $(SERVER_SOURCES:.c=.o)
 
-# define the dependency output files
-DEPS		:= $(OBJECTS:.o=.d)
+# Define the dependency output files
+CLIENT_DEPS := $(CLIENT_OBJECTS:.o=.d)
+SERVER_DEPS := $(SERVER_OBJECTS:.o=.d)
 
-#
 # The following part of the makefile is generic; it can be used to 
 # build any executable just by changing the definitions above and by
 # deleting dependencies appended to the file from 'make depend'
 #
 
-OUTPUTMAIN	:= $(call FIXPATH,$(OUTPUT)/$(MAIN))
-
-all: $(OUTPUT) $(MAIN)
+all: $(OUTPUT) $(CLIENT) $(SERVER)
 	@echo Executing 'all' complete!
 
 $(OUTPUT):
 	$(MD) $(OUTPUT)
 
-$(MAIN): $(OBJECTS) 
-	$(CC) $(CFLAGS) $(INCLUDES) -o $(OUTPUTMAIN) $(OBJECTS) $(LFLAGS) $(LIBS)
+$(CLIENT): $(CLIENT_OBJECTS)
+	$(CC) $(CFLAGS) $(INCLUDES) -o $(CLIENT) $(CLIENT_OBJECTS) $(LFLAGS) $(LIBS)
 
-# include all .d files
--include $(DEPS)
+$(SERVER): $(SERVER_OBJECTS)
+	$(CC) $(CFLAGS) $(INCLUDES) -o $(SERVER) $(SERVER_OBJECTS) $(LFLAGS) $(LIBS)
 
-# this is a suffix replacement rule for building .o's and .d's from .c's
-# it uses automatic variables $<: the name of the prerequisite of
-# the rule(a .c file) and $@: the name of the target of the rule (a .o file) 
-# -MMD generates dependency output files same name as the .o file
-# (see the gnu make manual section about automatic variables)
+# Include all .d files
+-include $(CLIENT_DEPS) $(SERVER_DEPS)
+
+# This is a suffix replacement rule for building .o's and .d's from .c's
 .c.o:
-	$(CC) $(CFLAGS) $(INCLUDES) -c -MMD $<  -o $@
+	$(CC) $(CFLAGS) $(INCLUDES) -c -MMD $< -o $@
 
 .PHONY: clean
 clean:
-	$(RM) $(OUTPUTMAIN)
-	$(RM) $(call FIXPATH,$(OBJECTS))
-	$(RM) $(call FIXPATH,$(DEPS))
+	$(RM) $(CLIENT) $(SERVER)
+	$(RM) $(call FIXPATH,$(CLIENT_OBJECTS) $(SERVER_OBJECTS))
+	$(RM) $(call FIXPATH,$(CLIENT_DEPS) $(SERVER_DEPS))
 	@echo Cleanup complete!
 
 run: all
-	./$(OUTPUTMAIN)
-	@echo Executing 'run: all' complete!
+	@echo "Run your executables manually (./$(CLIENT) or ./$(SERVER))"
