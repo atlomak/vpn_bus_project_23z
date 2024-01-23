@@ -17,7 +17,7 @@
 #include "ssl.h"
 #include "vpn.h"
 
-int create_socket(int port)
+int create_socket_server(int port)
 {
   int s;
   struct sockaddr_in addr;
@@ -70,7 +70,7 @@ int main(int argc, char **argv)
 
   configure_context(ctx);
 
-  sock = create_socket(4433);
+  sock = create_socket_server(PORT);
 
   /*
    * tun_buf - memory buffer read from/write to tun dev - is always plain
@@ -89,6 +89,15 @@ int main(int argc, char **argv)
   {
     perror("Unable to accept");
     exit(EXIT_FAILURE);
+  }
+
+  ssl = SSL_new(ctx);
+
+  SSL_set_fd(ssl, client);
+
+  if (SSL_accept(ssl) <= 0)
+  {
+    ERR_print_errors_fp(stderr);
   }
 
   while (1)
