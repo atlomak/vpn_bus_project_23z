@@ -5,7 +5,7 @@ CC = gcc
 CFLAGS := -Wall -Wextra -g
 
 # Define library paths in addition to /usr/lib
-LFLAGS =
+LFLAGS = -lssl -lcrypto
 
 # Define output directory
 OUTPUT := output
