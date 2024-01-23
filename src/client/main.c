@@ -28,30 +28,30 @@ int main(int argc, char **argv)
   setup_route_table();
   cleanup_when_sig_exit();
 
-  int udp_fd;
+  int tcp_fd;
   struct sockaddr_storage client_addr;
   socklen_t client_addrlen = sizeof(client_addr);
 
-  if ((udp_fd = udp_bind((struct sockaddr *)&client_addr, &client_addrlen)) < 0)
+  if ((tcp_fd = tcp_bind((struct sockaddr *)&client_addr, &client_addrlen)) < 0)
   {
     return 1;
   }
 
   /*
    * tun_buf - memory buffer read from/write to tun dev - is always plain
-   * udp_buf - memory buffer read from/write to udp fd - is always encrypted
+   * tcp_buf - memory buffer read from/write to udp fd - is always encrypted
    */
-  char tun_buf[MTU], udp_buf[MTU];
+  char tun_buf[MTU], tcp_buf[MTU];
   bzero(tun_buf, MTU);
-  bzero(udp_buf, MTU);
+  bzero(tcp_buf, MTU);
 
   while (1)
   {
     fd_set readset;
     FD_ZERO(&readset);
     FD_SET(tun_fd, &readset);
-    FD_SET(udp_fd, &readset);
-    int max_fd = max(tun_fd, udp_fd) + 1;
+    FD_SET(tcp_fd, &readset);
+    int max_fd = max(tun_fd, tcp_fd) + 1;
 
     if (-1 == select(max_fd, &readset, NULL, NULL, NULL))
     {
@@ -60,6 +60,11 @@ int main(int argc, char **argv)
     }
 
     int r;
+    if (listen(tcp_fd, 2))
+    {
+      perror("Listen failed\n")
+    }
+
     if (FD_ISSET(tun_fd, &readset))
     {
       r = read(tun_fd, tun_buf, MTU);
@@ -70,29 +75,30 @@ int main(int argc, char **argv)
         break;
       }
 
-      encrypt(tun_buf, udp_buf, r);
-      printf("Writing to UDP %d bytes ...\n", r);
+      encrypt(tun_buf, tcp_buf, r);
+      printf("Writing to TCP %d bytes ...\n", r);
 
-      r = sendto(udp_fd, udp_buf, r, 0, (const struct sockaddr *)&client_addr, client_addrlen);
+      r = sendto(tcp_fd, tcp_buf, r, 0, (const struct sockaddr *)&client_addr, client_addrlen);
       if (r < 0)
       {
         // TODO: ignore some errno
-        perror("sendto udp_fd error");
+        perror("sendto tcp_fd error");
         break;
       }
     }
 
-    if (FD_ISSET(udp_fd, &readset))
+    if (FD_ISSET(tcp_fd, &readset))
     {
-      r = recvfrom(udp_fd, udp_buf, MTU, 0, (struct sockaddr *)&client_addr, &client_addrlen);
+      // r = recvfrom(tcp_fd, tcp_buf, MTU, 0, (struct sockaddr *)&client_addr, &client_addrlen);
+      r = accept(tcp_fd, tcp_buf, MTU, 0, (struct sockaddr *)&client_addr, &client_addrlen);
       if (r < 0)
       {
         // TODO: ignore some errno
-        perror("recvfrom udp_fd error");
+        perror("recvfrom tcp_fd error");
         break;
       }
 
-      decrypt(udp_buf, tun_buf, r);
+      decrypt(tcp_buf, tun_buf, r);
       printf("Writing to tun %d bytes ...\n", r);
 
       r = write(tun_fd, tun_buf, r);
@@ -106,7 +112,7 @@ int main(int argc, char **argv)
   }
 
   close(tun_fd);
-  close(udp_fd);
+  close(tcp_fd);
 
   cleanup_route_table();
 

@@ -12,7 +12,9 @@
 #include <signal.h>
 #include <linux/if.h>
 #include <linux/if_tun.h>
+#include <openssl/ssl.h>
 
+#include "ssl.h"
 #include "vpn.h"
 
 int main(int argc, char **argv)
@@ -27,14 +29,20 @@ int main(int argc, char **argv)
   setup_route_table();
   cleanup_when_sig_exit();
 
-  int udp_fd;
+  int tcp_fd;
   struct sockaddr_storage client_addr;
   socklen_t client_addrlen = sizeof(client_addr);
 
-  if ((udp_fd = udp_bind((struct sockaddr *)&client_addr, &client_addrlen)) < 0)
+  if ((tcp_fd = tcp_bind((struct sockaddr *)&client_addr, &client_addrlen)) < 0)
   {
     return 1;
   }
+
+  SSL_CTX *ctx;
+
+  ctx = create_context();
+
+  configure_context(ctx);
 
   /*
    * tun_buf - memory buffer read from/write to tun dev - is always plain
@@ -49,8 +57,8 @@ int main(int argc, char **argv)
     fd_set readset;
     FD_ZERO(&readset);
     FD_SET(tun_fd, &readset);
-    FD_SET(udp_fd, &readset);
-    int max_fd = max(tun_fd, udp_fd) + 1;
+    FD_SET(tcp_fd, &readset);
+    int max_fd = max(tun_fd, tcp_fd) + 1;
 
     if (-1 == select(max_fd, &readset, NULL, NULL, NULL))
     {
@@ -72,22 +80,22 @@ int main(int argc, char **argv)
       encrypt(tun_buf, udp_buf, r);
       printf("Writing to UDP %d bytes ...\n", r);
 
-      r = sendto(udp_fd, udp_buf, r, 0, (const struct sockaddr *)&client_addr, client_addrlen);
+      r = sendto(tcp_fd, udp_buf, r, 0, (const struct sockaddr *)&client_addr, client_addrlen);
       if (r < 0)
       {
         // TODO: ignore some errno
-        perror("sendto udp_fd error");
+        perror("sendto tcp_fd error");
         break;
       }
     }
 
-    if (FD_ISSET(udp_fd, &readset))
+    if (FD_ISSET(tcp_fd, &readset))
     {
-      r = recvfrom(udp_fd, udp_buf, MTU, 0, (struct sockaddr *)&client_addr, &client_addrlen);
+      r = recvfrom(tcp_fd, udp_buf, MTU, 0, (struct sockaddr *)&client_addr, &client_addrlen);
       if (r < 0)
       {
         // TODO: ignore some errno
-        perror("recvfrom udp_fd error");
+        perror("recvfrom tcp_fd error");
         break;
       }
 
@@ -105,7 +113,7 @@ int main(int argc, char **argv)
   }
 
   close(tun_fd);
-  close(udp_fd);
+  close(tcp_fd);
 
   cleanup_route_table();
 

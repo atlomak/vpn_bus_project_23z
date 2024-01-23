@@ -12,6 +12,7 @@
 #include <signal.h>
 #include <linux/if.h>
 #include <linux/if_tun.h>
+#include <sys/select.h>
 
 #include "vpn.h"
 
@@ -121,9 +122,9 @@ void cleanup_route_table()
 }
 
 /*
- * Bind UDP port
+ * Bind TCP port
  */
-int udp_bind(struct sockaddr *addr, socklen_t *addrlen)
+int tcp_bind(struct sockaddr *addr, socklen_t *addrlen)
 {
     struct addrinfo hints;
     struct addrinfo *result;
@@ -157,7 +158,7 @@ int udp_bind(struct sockaddr *addr, socklen_t *addrlen)
     memcpy(addr, result->ai_addr, result->ai_addrlen);
     *addrlen = result->ai_addrlen;
 
-    if (-1 == (sock = socket(result->ai_family, SOCK_DGRAM, IPPROTO_UDP)))
+    if (-1 == (sock = socket(result->ai_family, SOCK_STREAM, 0)))
     {
         perror("Cannot create socket");
         freeaddrinfo(result);

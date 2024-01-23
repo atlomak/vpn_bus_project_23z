@@ -6,12 +6,13 @@
 #define BIND_HOST "0.0.0.0"
 
 // Function declarations
+int max(int a, int b);
 int tun_alloc();
 void run(char *cmd);
 void ifconfig();
 void setup_route_table();
 void cleanup_route_table();
-int udp_bind(struct sockaddr *addr, socklen_t *addrlen);
+int tcp_bind(struct sockaddr *addr, socklen_t *addrlen);
 void cleanup(int signo);
 void cleanup_when_sig_exit();
 void encrypt(char *plaintext, char *ciphertext, int len);
