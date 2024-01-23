@@ -104,6 +104,8 @@ int main(int argc, char **argv)
   while (1)
   {
 
+    int client = accept(sock, (struct sockaddr *)&addr, &len);
+
     fd_set readset;
     FD_ZERO(&readset);
     FD_SET(tun_fd, &readset);
