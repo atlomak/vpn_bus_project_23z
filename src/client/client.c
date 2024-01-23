@@ -15,6 +15,7 @@
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 
+#include "client.h"
 #include "vpn.h"
 
 int create_socket_client(const char *server_ip, int port)
