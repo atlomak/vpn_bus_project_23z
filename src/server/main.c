@@ -17,6 +17,37 @@
 #include "ssl.h"
 #include "vpn.h"
 
+int create_socket(int port)
+{
+  int s;
+  struct sockaddr_in addr;
+
+  addr.sin_family = AF_INET;
+  addr.sin_port = htons(port);
+  addr.sin_addr.s_addr = htonl(INADDR_ANY);
+
+  s = socket(AF_INET, SOCK_STREAM, 0);
+  if (s < 0)
+  {
+    perror("Unable to create socket");
+    exit(EXIT_FAILURE);
+  }
+
+  if (bind(s, (struct sockaddr *)&addr, sizeof(addr)) < 0)
+  {
+    perror("Unable to bind");
+    exit(EXIT_FAILURE);
+  }
+
+  if (listen(s, 1) < 0)
+  {
+    perror("Unable to listen");
+    exit(EXIT_FAILURE);
+  }
+
+  return s;
+}
+
 int main(int argc, char **argv)
 {
   int tun_fd;
@@ -29,36 +60,45 @@ int main(int argc, char **argv)
   setup_route_table();
   cleanup_when_sig_exit();
 
-  int tcp_fd;
-  struct sockaddr_storage client_addr;
-  socklen_t client_addrlen = sizeof(client_addr);
-
-  if ((tcp_fd = tcp_bind((struct sockaddr *)&client_addr, &client_addrlen)) < 0)
-  {
-    return 1;
-  }
-
+  int sock;
   SSL_CTX *ctx;
+
+  /* Ignore broken pipe signals */
+  signal(SIGPIPE, SIG_IGN);
 
   ctx = create_context();
 
   configure_context(ctx);
 
+  sock = create_socket(4433);
+
   /*
    * tun_buf - memory buffer read from/write to tun dev - is always plain
-   * udp_buf - memory buffer read from/write to udp fd - is always encrypted
+   * tcp_buf - memory buffer read from/write to tcp fd - is always encrypted
    */
-  char tun_buf[MTU], udp_buf[MTU];
+  char tun_buf[MTU], tcp_buf[MTU];
   bzero(tun_buf, MTU);
-  bzero(udp_buf, MTU);
+  bzero(tcp_buf, MTU);
+
+  struct sockaddr_in addr;
+  unsigned int len = sizeof(addr);
+  SSL *ssl;
+
+  int client = accept(sock, (struct sockaddr *)&addr, &len);
+  if (client < 0)
+  {
+    perror("Unable to accept");
+    exit(EXIT_FAILURE);
+  }
 
   while (1)
   {
+
     fd_set readset;
     FD_ZERO(&readset);
     FD_SET(tun_fd, &readset);
-    FD_SET(tcp_fd, &readset);
-    int max_fd = max(tun_fd, tcp_fd) + 1;
+    FD_SET(client, &readset);
+    int max_fd = max(tun_fd, client) + 1;
 
     if (-1 == select(max_fd, &readset, NULL, NULL, NULL))
     {
@@ -77,21 +117,20 @@ int main(int argc, char **argv)
         break;
       }
 
-      encrypt(tun_buf, udp_buf, r);
-      printf("Writing to UDP %d bytes ...\n", r);
+      printf("Writing to TCP %d bytes ...\n", r);
 
-      r = sendto(tcp_fd, udp_buf, r, 0, (const struct sockaddr *)&client_addr, client_addrlen);
+      r = SSL_write(ssl, tcp_buf, r);
       if (r < 0)
       {
         // TODO: ignore some errno
-        perror("sendto tcp_fd error");
+        perror("send tcp_fd error");
         break;
       }
     }
 
-    if (FD_ISSET(tcp_fd, &readset))
+    if (FD_ISSET(client, &readset))
     {
-      r = recvfrom(tcp_fd, udp_buf, MTU, 0, (struct sockaddr *)&client_addr, &client_addrlen);
+      r = SSL_read(ssl, tcp_buf, MTU);
       if (r < 0)
       {
         // TODO: ignore some errno
@@ -99,7 +138,6 @@ int main(int argc, char **argv)
         break;
       }
 
-      decrypt(udp_buf, tun_buf, r);
       printf("Writing to tun %d bytes ...\n", r);
 
       r = write(tun_fd, tun_buf, r);
@@ -112,8 +150,14 @@ int main(int argc, char **argv)
     }
   }
 
+  SSL_shutdown(ssl);
+  SSL_free(ssl);
+  close(client);
+
   close(tun_fd);
-  close(tcp_fd);
+  close(sock);
+
+  SSL_CTX_free(ctx);
 
   cleanup_route_table();
 
