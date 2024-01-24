@@ -12,6 +12,9 @@
 #include <signal.h>
 #include <linux/if.h>
 #include <linux/if_tun.h>
+#include <arpa/inet.h>
+#include <openssl/ssl.h>
+#include <openssl/err.h>
 
 
 #define SERVER_HOST "192.168.56.101"
@@ -22,6 +25,31 @@
 
 static int max(int a, int b) {
   return a > b ? a : b;
+}
+
+//SSL configuration
+SSL_CTX *create_context()
+{
+    const SSL_METHOD *method;
+    SSL_CTX *ctx;
+
+    //method = TLS_server_method();
+    method = SSLv23_client_method();
+
+    ctx = SSL_CTX_new(method);
+    if (!ctx) {
+        perror("Unable to create SSL context");
+        ERR_print_errors_fp(stderr);
+        exit(EXIT_FAILURE);
+    }
+
+     // Set the cert
+    if (SSL_CTX_use_certificate_file(ctx, "/home/kuba/vpn_bus_project_23z/certs/server_cert.pem", SSL_FILETYPE_PEM) <= 0) {
+        ERR_print_errors_fp(stderr);
+        exit(EXIT_FAILURE);
+    }
+
+    return ctx;
 }
 
 // Create VPN interface /dev/tun0 and return a fd
@@ -174,6 +202,10 @@ void decrypt(char *ciphertext, char *plantext, int len) {
 
 
 int main(int argc, char **argv) {
+  // Inicjalizacja biblioteki OpenSSL
+  SSL_library_init();
+  SSL_load_error_strings();
+
   int tun_fd;
   if ((tun_fd = tun_alloc()) < 0) {
     return 1;
@@ -183,14 +215,21 @@ int main(int argc, char **argv) {
   setup_route_table();
   cleanup_when_sig_exit();
 
-
   int udp_fd;
+  SSL_CTX *ctx;
+
+  ctx = create_context();
+
   struct sockaddr_storage client_addr;
   socklen_t client_addrlen = sizeof(client_addr);
+  SSL *ssl;
 
   if ((udp_fd = udp_bind((struct sockaddr *)&client_addr, &client_addrlen)) < 0) {
     return 1;
   }
+
+  ssl = SSL_new(ctx);
+  SSL_set_fd(ssl, udp_fd);
 
   // tun_buf - memory buffer read from/write to tun dev - is always plain
   // udp_buf - memory buffer read from/write to udp fd - is always encrypted
@@ -219,10 +258,19 @@ int main(int argc, char **argv) {
         break;
       }
 
-      encrypt(tun_buf, udp_buf, r);
+      // encrypt(tun_buf, udp_buf, r);
+      // Szyfrowanie danych
+      int encrypted_len = SSL_write(ssl, tun_buf, r);
+      if (encrypted_len <= 0) {
+          ERR_print_errors_fp(stderr);
+          break;
+      }
+
       printf("Writing to UDP %d bytes ...\n", r);
 
-      r = sendto(udp_fd, udp_buf, r, 0, (const struct sockaddr *)&client_addr, client_addrlen);
+      //r = sendto(udp_fd, udp_buf, r, 0, (const struct sockaddr *)&client_addr, client_addrlen);
+      // Wysyłanie zaszyfrowanych danych przez UDP
+      r = sendto(udp_fd, udp_buf, encrypted_len, 0, (const struct sockaddr *)&client_addr, client_addrlen);
       if (r < 0) {
         // TODO: ignore some errno
         perror("sendto udp_fd error");
@@ -238,10 +286,18 @@ int main(int argc, char **argv) {
         break;
       }
 
-      decrypt(udp_buf, tun_buf, r);
+      // decrypt(udp_buf, tun_buf, r);
+      // Deszyfrowywanie danych
+      int decrypted_len = SSL_read(ssl, tun_buf, r);
+      if (decrypted_len <= 0) {
+          ERR_print_errors_fp(stderr);
+          break;
+      }
+
       printf("Writing to tun %d bytes ...\n", r);
 
-      r = write(tun_fd, tun_buf, r);
+      //r = write(tun_fd, tun_buf, r);
+      r = write(tun_fd, tun_buf, decrypted_len);
       if (r < 0) {
         // TODO: ignore some errno
         perror("write tun_fd error");
@@ -250,8 +306,13 @@ int main(int argc, char **argv) {
     }
   }
 
+  SSL_shutdown(ssl);
+  SSL_free(ssl);
+
   close(tun_fd);
   close(udp_fd);
+
+  SSL_CTX_free(ctx);
 
   cleanup_route_table();
 

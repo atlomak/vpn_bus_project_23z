@@ -41,6 +41,9 @@ INCLUDES := $(patsubst %,-I%, $(INCLUDE:%/=%))
 # C library paths
 LIBS := $(patsubst %,-L%, $(LIB:%/=%))
 
+# Link OpenSSL libraries
+LIBS += -lssl -lcrypto
+
 # Define the C source files
 CLIENT_SOURCES := $(wildcard $(CLIENT_SRC)/*.c) $(wildcard $(SHARED_SRC)/*.c)
 SERVER_SOURCES := $(wildcard $(SERVER_SRC)/*.c) $(wildcard $(SHARED_SRC)/*.c)
