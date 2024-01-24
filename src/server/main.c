@@ -15,11 +15,13 @@
 #include <arpa/inet.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#include <openssl/conf.h>
 
 
 #define PORT 54345
 #define MTU 1400
 #define BIND_HOST "0.0.0.0"
+#define DTLS1_0_VERSION TLS1_VERSION
 
 
 static int max(int a, int b) {
@@ -32,12 +34,19 @@ SSL_CTX *create_context()
     const SSL_METHOD *method;
     SSL_CTX *ctx;
 
-    //method = TLS_server_method();
-    method = SSLv23_server_method();
+    // method = TLS_server_method();
+    // method = SSLv23_server_method();
+    method = DTLS_client_method();
 
     ctx = SSL_CTX_new(method);
     if (!ctx) {
         perror("Unable to create SSL context");
+        ERR_print_errors_fp(stderr);
+        exit(EXIT_FAILURE);
+    }
+
+    // Ustawiamy odpowiednie protokoły DTLS
+    if (SSL_CTX_set_min_proto_version(ctx, DTLS1_0_VERSION) <= 0) {
         ERR_print_errors_fp(stderr);
         exit(EXIT_FAILURE);
     }
@@ -221,12 +230,12 @@ int main(int argc, char **argv) {
 
   int udp_fd;
   SSL_CTX *ctx;
+  SSL *ssl;
 
   ctx = create_context();
 
   struct sockaddr_storage client_addr;
   socklen_t client_addrlen = sizeof(client_addr);
-  SSL *ssl;
 
   if ((udp_fd = udp_bind((struct sockaddr *)&client_addr, &client_addrlen)) < 0) {
     return 1;
@@ -234,6 +243,14 @@ int main(int argc, char **argv) {
 
   ssl = SSL_new(ctx);
   SSL_set_fd(ssl, udp_fd);
+
+  if (SSL_accept(ssl) <= 0) {
+      ERR_print_errors_fp(stderr);
+      close(udp_fd);
+      SSL_free(ssl);
+      SSL_CTX_free(ctx);
+      return 1;
+  }
 
   // tun_buf - memory buffer read from/write to tun dev - is always plain
   // udp_buf - memory buffer read from/write to udp fd - is always encrypted 
@@ -269,7 +286,7 @@ int main(int argc, char **argv) {
           ERR_print_errors_fp(stderr);
           break;
       }
-      
+
       printf("Writing to UDP %d bytes ...\n", r);
 
       //r = sendto(udp_fd, udp_buf, r, 0, (const struct sockaddr *)&client_addr, client_addrlen);
