@@ -18,8 +18,7 @@
  * Uncomment first 2 lines to run as vpn client
  */
 
-#define AS_CLIENT YES
-#define SERVER_HOST ""
+#define SERVER_HOST "192.168.56.101"
 
 #define PORT 54345
 #define MTU 1400
@@ -75,12 +74,7 @@ static void run(char *cmd) {
  */
 void ifconfig() {
   char cmd[1024];
-
-#ifdef AS_CLIENT
   snprintf(cmd, sizeof(cmd), "ifconfig tun0 10.8.0.2/16 mtu %d up", MTU);
-#else
-  snprintf(cmd, sizeof(cmd), "ifconfig tun0 10.8.0.1/16 mtu %d up", MTU);
-#endif
   run(cmd);
 }
 
@@ -91,7 +85,6 @@ void ifconfig() {
 void setup_route_table() {
   run("sysctl -w net.ipv4.ip_forward=1");
 
-#ifdef AS_CLIENT
   run("iptables -t nat -A POSTROUTING -o tun0 -j MASQUERADE");
   run("iptables -I FORWARD 1 -i tun0 -m state --state RELATED,ESTABLISHED -j ACCEPT");
   run("iptables -I FORWARD 1 -o tun0 -j ACCEPT");
@@ -100,11 +93,6 @@ void setup_route_table() {
   run(cmd);
   run("ip route add 0/1 dev tun0");
   run("ip route add 128/1 dev tun0");
-#else
-  run("iptables -t nat -A POSTROUTING -s 10.8.0.0/16 ! -d 10.8.0.0/16 -m comment --comment 'vpndemo' -j MASQUERADE");
-  run("iptables -A FORWARD -s 10.8.0.0/16 -m state --state RELATED,ESTABLISHED -j ACCEPT");
-  run("iptables -A FORWARD -d 10.8.0.0/16 -j ACCEPT");
-#endif
 }
 
 
@@ -112,7 +100,6 @@ void setup_route_table() {
  * Cleanup route table
  */
 void cleanup_route_table() {
-#ifdef AS_CLIENT
   run("iptables -t nat -D POSTROUTING -o tun0 -j MASQUERADE");
   run("iptables -D FORWARD -i tun0 -m state --state RELATED,ESTABLISHED -j ACCEPT");
   run("iptables -D FORWARD -o tun0 -j ACCEPT");
@@ -121,11 +108,6 @@ void cleanup_route_table() {
   run(cmd);
   run("ip route del 0/1");
   run("ip route del 128/1");
-#else
-  run("iptables -t nat -D POSTROUTING -s 10.8.0.0/16 ! -d 10.8.0.0/16 -m comment --comment 'vpndemo' -j MASQUERADE");
-  run("iptables -D FORWARD -s 10.8.0.0/16 -m state --state RELATED,ESTABLISHED -j ACCEPT");
-  run("iptables -D FORWARD -d 10.8.0.0/16 -j ACCEPT");
-#endif
 }
 
 
@@ -141,11 +123,9 @@ int udp_bind(struct sockaddr *addr, socklen_t* addrlen) {
   hints.ai_socktype = SOCK_DGRAM;
   hints.ai_protocol = IPPROTO_UDP;
 
-#ifdef AS_CLIENT
+
   const char *host = SERVER_HOST;
-#else
-  const char *host = BIND_HOST;
-#endif
+
   if (0 != getaddrinfo(host, NULL, &hints, &result)) {
     perror("getaddrinfo error");
     return -1;
@@ -168,15 +148,6 @@ int udp_bind(struct sockaddr *addr, socklen_t* addrlen) {
     freeaddrinfo(result);
     return -1;
   }
-
-#ifndef AS_CLIENT
-  if (0 != bind(sock, result->ai_addr, result->ai_addrlen)) {
-    perror("Cannot bind");
-    close(sock);
-    freeaddrinfo(result);
-    return -1;
-  }
-#endif
 
   freeaddrinfo(result);
 
