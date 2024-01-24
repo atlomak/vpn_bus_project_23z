@@ -13,7 +13,6 @@ OUTPUT := output
 # Define source directories
 CLIENT_SRC := src/client
 SERVER_SRC := src/server
-SHARED_SRC := src/shared
 
 # Define include directory
 INCLUDE := include
