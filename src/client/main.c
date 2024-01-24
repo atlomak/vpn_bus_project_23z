@@ -13,13 +13,8 @@
 #include <linux/if.h>
 #include <linux/if_tun.h>
 
-/*
- * The following lines serve as configurations
- * Uncomment first 2 lines to run as vpn client
- */
 
 #define SERVER_HOST "192.168.56.101"
-
 #define PORT 54345
 #define MTU 1400
 #define BIND_HOST "0.0.0.0"
@@ -29,10 +24,7 @@ static int max(int a, int b) {
   return a > b ? a : b;
 }
 
-
-/*
- * Create VPN interface /dev/tun0 and return a fd
- */
+// Create VPN interface /dev/tun0 and return a fd
 int tun_alloc() {
   struct ifreq ifr;
   int fd, e;
@@ -56,10 +48,7 @@ int tun_alloc() {
   return fd;
 }
 
-
-/*
- * Execute commands
- */
+// Execute commands
 static void run(char *cmd) {
   printf("Execute `%s`\n", cmd);
   if (system(cmd)) {
@@ -68,23 +57,16 @@ static void run(char *cmd) {
   }
 }
 
-
-/*
- * Configure IP address and MTU of VPN interface /dev/tun0
- */
+// Configuring IP address and MTU of VPN interface /dev/tun0
 void ifconfig() {
   char cmd[1024];
   snprintf(cmd, sizeof(cmd), "ifconfig tun0 10.8.0.2/16 mtu %d up", MTU);
   run(cmd);
 }
 
-
-/*
- * Setup route table via `iptables` & `ip route`
- */
+// Setup route table via `iptables` & `ip route`
 void setup_route_table() {
   run("sysctl -w net.ipv4.ip_forward=1");
-
   run("iptables -t nat -A POSTROUTING -o tun0 -j MASQUERADE");
   run("iptables -I FORWARD 1 -i tun0 -m state --state RELATED,ESTABLISHED -j ACCEPT");
   run("iptables -I FORWARD 1 -o tun0 -j ACCEPT");
@@ -95,10 +77,7 @@ void setup_route_table() {
   run("ip route add 128/1 dev tun0");
 }
 
-
-/*
- * Cleanup route table
- */
+// Cleanup route table
 void cleanup_route_table() {
   run("iptables -t nat -D POSTROUTING -o tun0 -j MASQUERADE");
   run("iptables -D FORWARD -i tun0 -m state --state RELATED,ESTABLISHED -j ACCEPT");
@@ -110,10 +89,7 @@ void cleanup_route_table() {
   run("ip route del 128/1");
 }
 
-
-/*
- * Bind UDP port
- */
+// Bind UDP port
 int udp_bind(struct sockaddr *addr, socklen_t* addrlen) {
   struct addrinfo hints;
   struct addrinfo *result;
@@ -123,9 +99,7 @@ int udp_bind(struct sockaddr *addr, socklen_t* addrlen) {
   hints.ai_socktype = SOCK_DGRAM;
   hints.ai_protocol = IPPROTO_UDP;
 
-
   const char *host = SERVER_HOST;
-
   if (0 != getaddrinfo(host, NULL, &hints, &result)) {
     perror("getaddrinfo error");
     return -1;
@@ -162,11 +136,7 @@ int udp_bind(struct sockaddr *addr, socklen_t* addrlen) {
   return -1;
 }
 
-
-
-/*
- * Catch Ctrl-C and `kill`s, make sure route table gets cleaned before this process exit
- */
+// Catch Ctrl-C and `kill`s, make sure route table gets cleaned before this process exit
 void cleanup(int signo) {
   printf("Goodbye, cruel world....\n");
   if (signo == SIGHUP || signo == SIGINT || signo == SIGTERM) {
@@ -192,16 +162,12 @@ void cleanup_when_sig_exit() {
   }
 }
 
-
-/*
- * For a real-world VPN, traffic inside UDP tunnel is encrypted
- * A comprehensive encryption is not easy and not the point for this demo
- * I'll just leave the stubs here
- */
+// Encrypting method
 void encrypt(char *plantext, char *ciphertext, int len) {
   memcpy(ciphertext, plantext, len);
 }
 
+// Decrypting method
 void decrypt(char *ciphertext, char *plantext, int len) {
   memcpy(plantext, ciphertext, len);
 }
@@ -226,11 +192,8 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-
-  /*
-   * tun_buf - memory buffer read from/write to tun dev - is always plain
-   * udp_buf - memory buffer read from/write to udp fd - is always encrypted
-   */
+  // tun_buf - memory buffer read from/write to tun dev - is always plain
+  // udp_buf - memory buffer read from/write to udp fd - is always encrypted
   char tun_buf[MTU], udp_buf[MTU];
   bzero(tun_buf, MTU);
   bzero(udp_buf, MTU);
