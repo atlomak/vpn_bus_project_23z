@@ -1,7 +1,9 @@
 #include <stdio.h>
 #include <sys/socket.h>
+#include <openssl/ssl.h>
 
 #include "vpn.h"
+#include "tls.h"
 
 #define CLIENT 1
 
@@ -26,6 +28,16 @@ int main(int argc, char **argv)
     {
         return 1;
     }
+
+    // OPENSSL TLS
+    SSL_CTX *ctx;
+    ctx = create_client_context();
+    configure_client_context(ctx);
+
+    SSL *ssl;
+    ssl = SSL_new(ctx);
+
+    SSL_set_fd(ssl, socket_fd);
 
     char tun_buf[MTU], tcp_buf[MTU];
     bzero(tun_buf, MTU);
@@ -58,7 +70,7 @@ int main(int argc, char **argv)
             memcpy(tcp_buf, tun_buf, r);
             printf("Writing to TCP %d bytes ...\n", r);
 
-            r = send(socket_fd, tcp_buf, r, 0);
+            r = SSL_write(ssl, tcp_buf, r);
             if (r < 0)
             {
                 perror("send error");
@@ -68,7 +80,7 @@ int main(int argc, char **argv)
 
         if (FD_ISSET(socket_fd, &readset))
         {
-            r = recv(socket_fd, tcp_buf, MTU, 0);
+            r = SSL_read(ssl, tcp_buf, MTU);
             if (r < 0)
             {
                 perror("recv error");

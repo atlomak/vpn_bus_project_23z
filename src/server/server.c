@@ -1,7 +1,9 @@
 #include <stdio.h>
 #include <sys/socket.h>
+#include <openssl/ssl.h>
 
 #include "vpn.h"
+#include "tls.h"
 
 #define SERVER 1
 
@@ -27,11 +29,28 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    // OPENSSL TLS
+    SSL_CTX *ctx;
+    ctx = create_server_context();
+    configure_server_context(ctx);
+
+    SSL *ssl;
+    ssl = SSL_new(ctx);
+
     char tun_buf[MTU], tcp_buf[MTU];
     bzero(tun_buf, MTU);
     bzero(tcp_buf, MTU);
 
     int client_fd = accept(socket_fd, (struct sockaddr *)&client_addr, &client_addrlen);
+
+    SSL_set_fd(ssl, client_fd);
+
+    // Handshake
+    if (SSL_accept(ssl) <= 0)
+    {
+        ERR_print_errors_fp(stderr);
+        return 1;
+    }
 
     while (1)
     {
@@ -60,7 +79,7 @@ int main(int argc, char **argv)
             memcpy(tcp_buf, tun_buf, r);
             printf("Writing to TCP %d bytes ...\n", r);
 
-            r = send(client_fd, tcp_buf, r, 0);
+            r = SSL_write(ssl, tcp_buf, r);
             if (r < 0)
             {
                 perror("send error");
@@ -70,7 +89,7 @@ int main(int argc, char **argv)
 
         if (FD_ISSET(client_fd, &readset))
         {
-            r = recv(client_fd, tcp_buf, MTU, 0);
+            r = SSL_read(ssl, tcp_buf, MTU);
             if (r < 0)
             {
                 perror("recv error");
@@ -89,10 +108,14 @@ int main(int argc, char **argv)
         }
     }
 
+    SSL_shutdown(ssl);
+    SSL_free(ssl);
+
     close(tun_fd);
     close(client_fd);
     close(socket_fd);
 
+    SSL_CTX_free(ctx);
     cleanup_route_table_server();
 
     return 0;
