@@ -3,7 +3,7 @@
 
 #include "vpn.h"
 
-#define CLIENT 1
+#define SERVER 1
 
 int main(int argc, char **argv)
 {
@@ -13,9 +13,9 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    ifconfig_client();
-    setup_route_table_client();
-    cleanup_when_sig_exit(CLIENT);
+    ifconfig_server();
+    setup_route_table_server();
+    cleanup_when_sig_exit(SERVER);
 
     int socket_fd;
     struct sockaddr_storage client_addr;
@@ -93,7 +93,7 @@ int main(int argc, char **argv)
     close(client_fd);
     close(socket_fd);
 
-    cleanup_route_table_client(SERVER_HOST);
+    cleanup_route_table_server();
 
     return 0;
 }
