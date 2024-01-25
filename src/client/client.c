@@ -55,7 +55,7 @@ int main(int argc, char **argv)
                 break;
             }
 
-            memcpy(tun_buf, tcp_buf, r);
+            memcpy(tcp_buf, tun_buf, r);
             printf("Writing to TCP %d bytes ...\n", r);
 
             r = send(socket_fd, tcp_buf, r, 0);
@@ -75,7 +75,7 @@ int main(int argc, char **argv)
                 break;
             }
 
-            memcpy(tcp_buf, tun_buf, r);
+            memcpy(tun_buf, tcp_buf, r);
             printf("Writing to tun %d bytes ...\n", r);
 
             r = write(tun_fd, tun_buf, r);
