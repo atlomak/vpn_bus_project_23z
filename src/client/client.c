@@ -39,6 +39,13 @@ int main(int argc, char **argv)
 
     SSL_set_fd(ssl, socket_fd);
 
+    // Handshake
+    if (SSL_connect(ssl) <= 0)
+    {
+        ERR_print_errors_fp(stderr);
+        return 1;
+    }
+
     char tun_buf[MTU], tcp_buf[MTU];
     bzero(tun_buf, MTU);
     bzero(tcp_buf, MTU);
