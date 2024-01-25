@@ -89,7 +89,6 @@ int main(int argc, char **argv)
 
     close(tun_fd);
     close(socket_fd);
-    close(socket_fd);
 
     cleanup_route_table_client(SERVER_HOST);
 

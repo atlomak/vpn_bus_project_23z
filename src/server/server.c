@@ -31,13 +31,15 @@ int main(int argc, char **argv)
     bzero(tun_buf, MTU);
     bzero(tcp_buf, MTU);
 
+    int client_fd = accept(socket_fd, (struct sockaddr *)&client_addr, &client_addrlen);
+
     while (1)
     {
         fd_set readset;
         FD_ZERO(&readset);
         FD_SET(tun_fd, &readset);
-        FD_SET(socket_fd, &readset);
-        int max_fd = max(tun_fd, socket_fd) + 1;
+        FD_SET(client_fd, &readset);
+        int max_fd = max(tun_fd, client_fd) + 1;
 
         if (-1 == select(max_fd, &readset, NULL, NULL, NULL))
         {
@@ -58,7 +60,7 @@ int main(int argc, char **argv)
             memcpy(tun_buf, tcp_buf, r);
             printf("Writing to TCP %d bytes ...\n", r);
 
-            r = send(socket_fd, tcp_buf, r, 0);
+            r = send(client_fd, tcp_buf, r, 0);
             if (r < 0)
             {
                 perror("send error");
@@ -66,9 +68,9 @@ int main(int argc, char **argv)
             }
         }
 
-        if (FD_ISSET(socket_fd, &readset))
+        if (FD_ISSET(client_fd, &readset))
         {
-            r = recv(socket_fd, tcp_buf, MTU, 0);
+            r = recv(client_fd, tcp_buf, MTU, 0);
             if (r < 0)
             {
                 perror("recv error");
@@ -88,7 +90,7 @@ int main(int argc, char **argv)
     }
 
     close(tun_fd);
-    close(socket_fd);
+    close(client_fd);
     close(socket_fd);
 
     cleanup_route_table_client(SERVER_HOST);
